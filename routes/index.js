@@ -1,9 +1,13 @@
 'use strict'
 
 var Got = require('../models/got'),
+    jwt    = require('jsonwebtoken'),
+    config = require('../config'),
     router = require('express').Router();
 
 // api endpoints starts here---------------------------------------------------------------------
+// All apis starts with /api are secured by JWT token
+
 
 // list api
 router.get('/api/list', (req, res) => {
@@ -86,6 +90,33 @@ router.get('/api/search', (req, res) => {
         .then((result) => { res.status(200).json(result); })
         .catch((err) => { console.error(err); res.status(500).json(err); })
 });
+
+
+//-------- JWT authentication written for single user only ------------//
+// getToken api
+router.post('/getToken', (req, res) => {
+    let username = req.body.username, password = req.body.password;
+    if (!username || !password) {
+        res.json({ success: false, message: 'Authentication failed. User Details incomplete.' });
+    }
+    else if (username !== config.username || password !== config.password) {
+        res.json({ success: false, message: 'Authentication failed. Wrong password and username.' });
+    } 
+    else {
+        // create a token after correct credentials
+        var payload = { username: config.username, password: config.password };
+        var token = jwt.sign(payload, config.secret, {
+            expiresIn: 3600
+        });   // token expires in 1 hour
+        res.json({
+            success: true,
+            message: 'Please use this token as Authorization header for APIs!',
+            token: token
+        });
+    }
+});
+
+
 
 // module exports
 module.exports = router;
