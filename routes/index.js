@@ -7,8 +7,11 @@ var Got = require('../models/got'),
 
 // list api
 router.get('/api/list', (req, res) => {
-    Got.find({ 'name': new RegExp('Battle', 'i') }, { 'region': 1 })
-        .then((result) => { res.status(200).json(result); })
+    Got.find({}, { _id: 0, location: 1 })
+        .then((data) => {
+            let result = data.map((obj) => { return obj.location });
+            res.status(200).json(result);
+        })
         .catch((err) => { console.error(err); res.status(500).json(err); })
 });
 
@@ -16,13 +19,8 @@ router.get('/api/list', (req, res) => {
 // count api
 router.get('/api/count', (req, res) => {
     Got.aggregate([
-        { $match: { 'name': new RegExp('Battle', 'i') } },
-        {
-            $group: {
-                _id: null,
-                battle_count: { $sum: 1 }
-            }
-        }
+        { $group: { _id: null, battle_count: { $sum: 1 } } },
+        { $project: { _id: 0, battle_count: 1 } }
     ])
         .then((result) => { res.status(200).json(result); })
         .catch((err) => { console.error(err); res.status(500).json(err); })
@@ -35,22 +33,31 @@ router.get('/api/stats', (req, res) => {
         {
             $facet: {
                 "attacker_outcome": [
-                    { $sortByCount: "$attacker_outcome" }
+                    { $sortByCount: "$attacker_outcome" },
+                    { $project: { _id: 0, outcome: '$_id' , count: '$count'} }
                 ],
                 "battle_type": [
-                    { $sortByCount: "$battle_type" }
+                    { $sortByCount: "$battle_type" },
+                    { $project: { _id: 0, battle_type: '$_id' } }
                 ],
-            },
-            // $group: {
-            //     _id: null,
-            //     name: { $max: '$name' },
-            //     region: { $max: '$region' },
-            //     attck_count: { $max: '$attacker_king' },
-            //     defend_count: { $max: '$defender_king' },
-            //     max: { $max: '$defender_size' },
-            //     min: { $min: '$defender_size' },
-            //     avg_count: { $avg: '$defender_size' }
-            // }
+                "most_active": [{
+                    $group: {
+                        _id: null,
+                        name: { $max: '$name' },
+                        region: { $max: '$region' },
+                        attacker_king: { $max: '$attacker_king' },
+                        defender_king: { $max: '$defender_king' }
+                    }
+                }, { $project: { _id: 0, name: 1, region: 1, attacker_king: 1, defender_king: 1 } }],
+                "defender_size": [{
+                    $group: {
+                        _id: null,
+                        max: { $max: '$defender_size' },
+                        min: { $min: '$defender_size' },
+                        average: { $avg: '$defender_size' }
+                    }
+                }, { $project: { _id: 0, max: 1 , min: 1, average: 1 } }]
+            }
         }
     ])
         .then((result) => { res.status(200).json(result); })
@@ -60,16 +67,25 @@ router.get('/api/stats', (req, res) => {
 
 // search api
 router.get('/api/search', (req, res) => {
+    let query = [];
+    let fields = { name: 1, attacker_king: 1, defender_king: 1, location: 1, battle_type: 1, _id: 0 };
+    if (req.query.king) {
+        let king = new RegExp(req.query.king, 'i');
+        query.push({ $or: [{ 'attacker_king': king }, { 'defender_king': king }] });
+    }
+    if (req.query.location) {
+        let location = new RegExp(req.query.location, 'i');
+        query.push({ location: location });
+    }
+    if (req.query.type) {
+        let type = new RegExp(req.query.type, 'i');
+        query.push({ battle_type: type });
+    }
 
-    let king = new RegExp(req.query.king, 'i');
-    let region = new RegExp(req.query.location, 'i');
-    Got.find({
-        $and: [{ $or: [{ 'attacker_king': king }, { 'defender_king': king }] },
-        { location: region }]
-    }, { name: 1, attacker_king: 1, defender_king: 1, location: 1 })
+    Got.find({ $and: query }, fields)
         .then((result) => { res.status(200).json(result); })
         .catch((err) => { console.error(err); res.status(500).json(err); })
 });
 
-
+// module exports
 module.exports = router;
